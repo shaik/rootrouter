@@ -1,0 +1,164 @@
+#!/bin/bash
+# Create required directories
+mkdir -p templates
+
+# Create app.py with starter content if it does not exist
+if [ ! -f app.py ]; then
+cat << 'EOF' > app.py
+import json
+from flask import Flask, request, render_template, abort, Response
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+app = Flask(__name__)
+
+with open("config.json") as f:
+    config = json.load(f)
+
+apps_dict = {}
+for app_config in config.get("apps", []):
+    route = app_config.get("route")
+    if route:
+        apps_dict[route] = app_config
+
+session = requests.Session()
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS", "POST", "PUT", "DELETE", "PATCH"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session.mount("http://", adapter)
+session.mount("https://", adapter)
+
+TIMEOUT = 10
+
+@app.route("/")
+def index():
+    return render_template("index.html", apps=config.get("apps", []))
+
+@app.route("/<app_route>/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@app.route("/<app_route>/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+def proxy(app_route, path):
+    if app_route not in apps_dict:
+        abort(404, description="Application not found.")
+    target_app = apps_dict[app_route]
+    target_url = target_app.get("url")
+    if not target_url.lower().startswith("https://"):
+        abort(400, description="Invalid target URL, must use HTTPS.")
+    forward_url = target_url.rstrip("/") + "/" + path.lstrip("/")
+    if request.query_string:
+        forward_url += "?" + request.query_string.decode("utf-8")
+    headers = {}
+    for header, value in request.headers.items():
+        if header.lower() in ["host", "content-length"]:
+            continue
+        headers[header] = value
+    try:
+        resp = session.request(
+            method=request.method,
+            url=forward_url,
+            headers=headers,
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False,
+            timeout=TIMEOUT,
+            stream=True
+        )
+    except requests.exceptions.RequestException as e:
+        abort(502, description=str(e))
+    excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+    response = Response(resp.content, status=resp.status_code)
+    for header, value in resp.headers.items():
+        if header.lower() not in excluded_headers:
+            response.headers[header] = value
+    return response
+
+if __name__ == "__main__":
+    app.run(debug=True)
+EOF
+echo "Created app.py"
+fi
+
+# Create config.json with sample configuration if it does not exist
+if [ ! -f config.json ]; then
+cat << 'EOF' > config.json
+{
+  "apps": [
+    {
+      "name": "Anagram Solver",
+      "route": "anagram",
+      "url": "https://hebrew-anagram-solver.herokuapp.com",
+      "description": "Solve Hebrew anagrams instantly."
+    },
+    {
+      "name": "Emoji Art Creator",
+      "route": "emoji",
+      "url": "https://emoji-art-app.herokuapp.com",
+      "description": "Create stunning art using emojis."
+    },
+    {
+      "name": "Gibberizer",
+      "route": "gibberizer",
+      "url": "https://gibberizer-app.herokuapp.com",
+      "description": "Generate fun and random gibberish text."
+    }
+  ]
+}
+EOF
+echo "Created config.json"
+fi
+
+# Create the main HTML template if it does not exist
+if [ ! -f templates/index.html ]; then
+cat << 'EOF' > templates/index.html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>RootRouter - Available Apps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .app { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    a { text-decoration: none; color: #007BFF; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>Available Apps</h1>
+  <div>
+    {% for app in apps %}
+      <div class="app">
+        <h2><a href="/{{ app.route }}/">{{ app.name }}</a></h2>
+        <p>{{ app.description }}</p>
+      </div>
+    {% endfor %}
+  </div>
+</body>
+</html>
+EOF
+echo "Created templates/index.html"
+fi
+
+# Create Procfile for Heroku deployment if it does not exist
+if [ ! -f Procfile ]; then
+cat << 'EOF' > Procfile
+web: gunicorn app:app
+EOF
+echo "Created Procfile"
+fi
+
+# Create requirements.txt if it does not exist
+if [ ! -f requirements.txt ]; then
+cat << 'EOF' > requirements.txt
+Flask>=2.0.0
+requests>=2.25.0
+gunicorn>=20.0.0
+EOF
+echo "Created requirements.txt"
+fi
+
+echo "Project structure created successfully."

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>RootRouter - Available Apps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .app { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    a { text-decoration: none; color: #007BFF; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>Available Apps</h1>
+  <div>
+    {% for app in apps %}
+      <div class="app">
+        <h2><a href="/{{ app.route }}/">{{ app.name }}</a></h2>
+        <p>{{ app.description }}</p>
+      </div>
+    {% endfor %}
+  </div>
+</body>
+</html>

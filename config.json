@@ -1,0 +1,22 @@
+{
+  "apps": [
+    {
+      "name": "Anagram Solver",
+      "route": "anagram",
+      "url": "https://hebrew-anagram-solver.herokuapp.com",
+      "description": "Solve Hebrew anagrams instantly."
+    },
+    {
+      "name": "Emoji Art Creator",
+      "route": "emoji",
+      "url": "https://emoji-art-app.herokuapp.com",
+      "description": "Create stunning art using emojis."
+    },
+    {
+      "name": "Gibberizer",
+      "route": "gibberizer",
+      "url": "https://gibberizer-app.herokuapp.com",
+      "description": "Generate fun and random gibberish text."
+    }
+  ]
+}
