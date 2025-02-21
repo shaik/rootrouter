@@ -3,19 +3,19 @@
     {
       "name": "Anagram Solver",
       "route": "anagram",
-      "url": "https://hebrew-anagram-solver.herokuapp.com",
+      "url": "https://hebrew-anagram-finder-6b7a18740c32.herokuapp.com",
       "description": "Solve Hebrew anagrams instantly."
     },
     {
       "name": "Emoji Art Creator",
       "route": "emoji",
-      "url": "https://emoji-art-app.herokuapp.com",
+      "url": "https://emoji-art-app-d0c02ef8dace.herokuapp.com",
       "description": "Create stunning art using emojis."
     },
     {
       "name": "Gibberizer",
       "route": "gibberizer",
-      "url": "https://gibberizer-app.herokuapp.com",
+      "url": "https://gibberizer-app-4d2ed0c8c65b.herokuapp.com",
       "description": "Generate fun and random gibberish text."
     }
   ]
