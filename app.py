@@ -51,6 +51,7 @@ def proxy(app_route, path):
         forward_url += "?" + request.query_string.decode("utf-8")
 
     headers = {k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "authorization", "cookie"]}
+    headers["X-Forwarded-Prefix"] = f"/{app_route}"
 
     try:
         logging.info(f"Forwarding {request.method} request to: {forward_url}")
