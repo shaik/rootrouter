@@ -35,8 +35,8 @@ logging.basicConfig(level=logging.INFO)
 
 @app.before_request
 def set_script_root():
-    """Set SCRIPT_NAME in the WSGI environment based on reverse proxy headers."""
-    script_name = request.headers.get('X-Forwarded-Prefix')
+    """Set SCRIPT_NAME using X-Script-Name header for better compatibility."""
+    script_name = request.headers.get('X-Script-Name')
     if script_name:
         request.environ['SCRIPT_NAME'] = script_name
 
@@ -65,7 +65,7 @@ def proxy(app_route, path):
 
     # Forward request headers, excluding sensitive headers
     headers = {k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "authorization", "cookie"]}
-    headers["X-Forwarded-Prefix"] = f"/{app_route}"
+    headers["X-Script-Name"] = f"/{app_route}"
 
     try:
         logging.info(f"Forwarding {request.method} request to: {forward_url}")
