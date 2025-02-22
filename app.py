@@ -43,32 +43,36 @@ def set_script_root():
 @app.route("/")
 def index():
     """Render the index page with a list of available apps."""
+    logging.info("Homepage accessed")
     return render_template("index.html", apps=config.get("apps", []))
 
 @app.route("/<app_route>/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 @app.route("/<app_route>/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 def proxy(app_route, path):
     """Proxy requests to the target app based on the route."""
+    logging.info(f"Received request for app: {app_route}, path: '{path}', query: '{request.query_string.decode('utf-8')}'")
     if app_route not in apps_dict:
+        logging.error(f"Application for route '{app_route}' not found.")
         abort(404, description="Application not found.")
 
     target_app = apps_dict[app_route]
     target_url = target_app.get("url")
 
     if not target_url.lower().startswith("https://"):
+        logging.error(f"Invalid target URL for app '{app_route}': {target_url}")
         abort(400, description="Invalid target URL, must use HTTPS.")
 
     # Construct forward URL
     forward_url = f"{target_url.rstrip('/')}/{path.lstrip('/')}"
     if request.query_string:
         forward_url += "?" + request.query_string.decode("utf-8")
+    logging.info(f"Forwarding {request.method} request to: {forward_url}")
 
     # Forward request headers, excluding sensitive headers
     headers = {k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "authorization", "cookie"]}
     headers["X-Script-Name"] = f"/{app_route}"
 
     try:
-        logging.info(f"Forwarding {request.method} request to: {forward_url}")
         # Forward request using session
         resp = session.request(
             method=request.method,
@@ -79,6 +83,7 @@ def proxy(app_route, path):
             timeout=TIMEOUT,
             stream=True
         )
+        logging.info(f"Received response with status code {resp.status_code} from {forward_url}")
     except requests.exceptions.RequestException as e:
         logging.error(f"Request to {forward_url} failed: {e}")
         abort(502, description="Bad Gateway: " + str(e))
