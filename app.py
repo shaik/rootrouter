@@ -1,11 +1,15 @@
 import json
 import logging
-from flask import Flask, request, render_template, abort, Response
 import requests
+from flask import Flask, request, render_template, abort, Response
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-app = Flask(__name__)
+########################################
+# 1) Create Flask with `static_folder=None`
+#    to prevent the default /static route
+########################################
+app = Flask(__name__, static_folder=None)
 app.url_map.strict_slashes = False
 
 # Load config for apps
@@ -20,7 +24,7 @@ retry_strategy = Retry(
     total=3,
     backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods=["GET","HEAD","OPTIONS","POST","PUT","DELETE","PATCH"]
+    allowed_methods=["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE", "PATCH"]
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
 session.mount("http://", adapter)
@@ -29,11 +33,19 @@ session.mount("https://", adapter)
 TIMEOUT = 10
 logging.basicConfig(level=logging.INFO)
 
+
+########################################
+# 2) Root route to show apps
+########################################
 @app.route("/")
 def index():
     """Show main page with links."""
     return render_template("index.html", apps=config.get("apps", []))
 
+
+########################################
+# 3) Proxy for sub-app routes: /emoji, etc.
+########################################
 @app.route("/<app_route>", defaults={"path": ""}, methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS","HEAD"])
 @app.route("/<app_route>/<path:path>", methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS","HEAD"])
 def proxy(app_route, path):
@@ -53,15 +65,15 @@ def proxy(app_route, path):
     # Filter out sensitive headers
     forward_headers = {
         k: v
-        for k,v in request.headers.items()
-        if k.lower() not in ("host","content-length","authorization","cookie")
+        for k, v in request.headers.items()
+        if k.lower() not in ("host", "content-length", "authorization", "cookie")
     }
-    # This is crucial: sub-app uses X-Script-Name to prefix its routes
+    # Pass the route as X-Script-Name so the sub-app can apply the prefix
     forward_headers["X-Script-Name"] = f"/{app_route}"
 
     logging.info(f"Proxying {request.method} {request.path} => {forward_url}")
 
-    # Forward request
+    # Forward the request
     try:
         resp = session.request(
             method=request.method,
@@ -79,21 +91,16 @@ def proxy(app_route, path):
     # Build a Flask response
     excluded = ["content-encoding","content-length","transfer-encoding","connection"]
     flask_resp = Response(resp.content, status=resp.status_code)
-    for h,v in resp.headers.items():
+    for h, v in resp.headers.items():
         if h.lower() not in excluded:
             flask_resp.headers[h] = v
 
     return flask_resp
 
-# In your root router app.py
 
-import re
-from flask import Flask, request, Response, abort
-import requests
-import logging
-
-# Suppose you already have: app = Flask(__name__), a config, apps_dict, etc.
-
+########################################
+# 4) Brute-force /static route
+########################################
 @app.route("/static/<path:filename>")
 def brute_force_static(filename):
     """
@@ -103,8 +110,6 @@ def brute_force_static(filename):
     referer = request.headers.get("Referer", "")
     referer_lower = referer.lower()
 
-    # 1. Guess the route from the referer
-    #   For example, if you have 'emoji', 'gibberizer', 'anagram' sub-apps:
     if "/emoji" in referer_lower:
         route = "emoji"
     elif "/gibberizer" in referer_lower:
@@ -112,20 +117,17 @@ def brute_force_static(filename):
     elif "/anagram" in referer_lower:
         route = "anagram"
     else:
-        # Fallback if we can't guess -> pick a default or 404
         logging.warning(f"Unable to determine route from Referer: {referer}")
         abort(404, description="No route found for static request")
 
-    # 2. Build the forward URL to sub-app's /static/filename
     if route not in apps_dict:
         abort(404, description="Route not found in config")
 
-    target_url = apps_dict[route]["url"]
-    forward_url = f"{target_url.rstrip('/')}/static/{filename}"
+    target_url = apps_dict[route]["url"].rstrip("/")
+    forward_url = f"{target_url}/static/{filename}"
 
     logging.info(f"Brute-forcing static request for /static/{filename} => {forward_url}")
 
-    # 3. Proxy this file request
     try:
         resp = requests.get(forward_url, timeout=10, stream=True)
     except requests.exceptions.RequestException as e:
@@ -133,10 +135,8 @@ def brute_force_static(filename):
         abort(502, description="Bad Gateway: " + str(e))
 
     if resp.status_code == 404:
-        # File not found in the sub-app's static directory
         abort(404, description="Static file not found")
 
-    # 4. Build a Flask response
     excluded = ["content-encoding", "content-length", "transfer-encoding", "connection"]
     flask_resp = Response(resp.content, status=resp.status_code, content_type=resp.headers.get("Content-Type"))
     for h, v in resp.headers.items():
@@ -145,5 +145,11 @@ def brute_force_static(filename):
 
     return flask_resp
 
+
 if __name__ == "__main__":
+    ########################################
+    # 5) Start the app
+    ########################################
+    # Debug mode for local dev; for Heroku, specify gunicorn in Procfile
+    logging.info("Starting v1.09")
     app.run(debug=True)
