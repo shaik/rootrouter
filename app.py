@@ -7,6 +7,8 @@ from urllib3.util.retry import Retry  # Retry strategy for handling transient er
 
 # Initialize Flask app
 app = Flask(__name__)
+# Disable strict slashes to avoid 308 redirects for missing/extra slashes
+app.url_map.strict_slashes = False
 
 # Load configuration from JSON file
 with open("config.json") as f:
@@ -33,19 +35,17 @@ TIMEOUT = 10
 # Configure logging to display info-level messages
 logging.basicConfig(level=logging.INFO)
 
-@app.url_defaults
-def add_script_root(endpoint, values):
-    """Modify url_for() to include script_root for static files."""
-    script_name = request.headers.get('X-Script-Name')
-    if script_name:
-        values['_external'] = False
-        values['_scheme'] = 'https'
-        values['_anchor'] = None
-        request.script_root = script_name
-
 @app.before_request
-def log_script_root():
-    logging.info(f"DEBUG: SCRIPT_NAME = {request.environ.get('SCRIPT_NAME')}, script_root = {request.script_root}")
+def set_script_name():
+    """
+    Instead of trying to set request.script_root (which is read-only),
+    we set SCRIPT_NAME in the WSGI environ. If the target app or templates
+    rely on SCRIPT_NAME, they can derive it from request.environ['SCRIPT_NAME'].
+    """
+    script_name = request.headers.get("X-Script-Name")
+    if script_name:
+        request.environ["SCRIPT_NAME"] = script_name
+    logging.info(f"DEBUG: SCRIPT_NAME = {request.environ.get('SCRIPT_NAME')}")
 
 @app.route("/")
 def index():
@@ -53,11 +53,13 @@ def index():
     logging.info("Homepage accessed")
     return render_template("index.html", apps=config.get("apps", []))
 
-@app.route("/<app_route>/", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@app.route("/<app_route>", defaults={"path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 @app.route("/<app_route>/<path:path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 def proxy(app_route, path):
     """Proxy requests to the target app based on the route."""
     logging.info(f"Received request for app: {app_route}, path: '{path}', query: '{request.query_string.decode('utf-8')}'")
+
+    # Validate the target route
     if app_route not in apps_dict:
         logging.error(f"Application for route '{app_route}' not found.")
         abort(404, description="Application not found.")
@@ -65,6 +67,7 @@ def proxy(app_route, path):
     target_app = apps_dict[app_route]
     target_url = target_app.get("url")
 
+    # Must be HTTPS
     if not target_url.lower().startswith("https://"):
         logging.error(f"Invalid target URL for app '{app_route}': {target_url}")
         abort(400, description="Invalid target URL, must use HTTPS.")
@@ -75,12 +78,16 @@ def proxy(app_route, path):
         forward_url += "?" + request.query_string.decode("utf-8")
     logging.info(f"Forwarding {request.method} request to: {forward_url}")
 
-    # Forward request headers, excluding sensitive headers
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "authorization", "cookie"]}
+    # Forward request headers, excluding sensitive ones
+    headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in ["host", "content-length", "authorization", "cookie"]
+    }
     headers["X-Script-Name"] = f"/{app_route}"
 
+    # Send the request
     try:
-        # Forward request using session
         resp = session.request(
             method=request.method,
             url=forward_url,
@@ -95,7 +102,7 @@ def proxy(app_route, path):
         logging.error(f"Request to {forward_url} failed: {e}")
         abort(502, description="Bad Gateway: " + str(e))
 
-    # Exclude certain headers from the response
+    # Build Flask response
     excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
     response = Response(resp.content, status=resp.status_code, content_type=resp.headers.get("Content-Type", "text/html"))
     for header, value in resp.headers.items():
