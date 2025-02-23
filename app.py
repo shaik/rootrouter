@@ -1,11 +1,10 @@
 import json  # For loading configuration from JSON files
 import logging  # For logging request and error information
-from flask import Flask, request, render_template, abort, Response, url_for  # Flask framework for handling web requests
+from flask import Flask, request, render_template, abort, Response, url_for
 import requests  # For forwarding HTTP requests to external apps
-from requests.adapters import HTTPAdapter  # Adapter for HTTP sessions
-from urllib3.util.retry import Retry  # Retry strategy for handling transient errors
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# Initialize Flask app
 app = Flask(__name__)
 # Disable strict slashes to avoid 308 redirects for missing/extra slashes
 app.url_map.strict_slashes = False
@@ -34,18 +33,6 @@ TIMEOUT = 10
 
 # Configure logging to display info-level messages
 logging.basicConfig(level=logging.INFO)
-
-@app.before_request
-def set_script_name():
-    """
-    Instead of trying to set request.script_root (which is read-only),
-    we set SCRIPT_NAME in the WSGI environ. If the target app or templates
-    rely on SCRIPT_NAME, they can derive it from request.environ['SCRIPT_NAME'].
-    """
-    script_name = request.headers.get("X-Script-Name")
-    if script_name:
-        request.environ["SCRIPT_NAME"] = script_name
-    logging.info(f"DEBUG: SCRIPT_NAME = {request.environ.get('SCRIPT_NAME')}")
 
 @app.route("/")
 def index():
@@ -84,6 +71,7 @@ def proxy(app_route, path):
         for k, v in request.headers.items()
         if k.lower() not in ["host", "content-length", "authorization", "cookie"]
     }
+    # Pass the route as X-Script-Name so the sub-app knows its prefix
     headers["X-Script-Name"] = f"/{app_route}"
 
     # Send the request
