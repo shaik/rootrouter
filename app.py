@@ -1,6 +1,6 @@
 import json  # For loading configuration from JSON files
 import logging  # For logging request and error information
-from flask import Flask, request, render_template, abort, Response  # Flask framework for handling web requests
+from flask import Flask, request, render_template, abort, Response, url_for  # Flask framework for handling web requests
 import requests  # For forwarding HTTP requests to external apps
 from requests.adapters import HTTPAdapter  # Adapter for HTTP sessions
 from urllib3.util.retry import Retry  # Retry strategy for handling transient errors
@@ -33,12 +33,19 @@ TIMEOUT = 10
 # Configure logging to display info-level messages
 logging.basicConfig(level=logging.INFO)
 
-@app.before_request
-def set_script_root():
-    """Set SCRIPT_NAME using X-Script-Name header for better compatibility."""
+@app.url_defaults
+def add_script_root(endpoint, values):
+    """Modify url_for() to include script_root for static files."""
     script_name = request.headers.get('X-Script-Name')
     if script_name:
-        request.environ['SCRIPT_NAME'] = script_name
+        values['_external'] = False
+        values['_scheme'] = 'https'
+        values['_anchor'] = None
+        request.script_root = script_name
+
+@app.before_request
+def log_script_root():
+    logging.info(f"DEBUG: SCRIPT_NAME = {request.environ.get('SCRIPT_NAME')}, script_root = {request.script_root}")
 
 @app.route("/")
 def index():
